@@ -6,7 +6,7 @@ import torch.nn as nn
 from modelscope.hub.snapshot_download import snapshot_download
 
 
-from data.data_processing import get_dataloaders, save_process
+from data.data_processing import get_dataloaders
 from train import train_model
 from evaluate import evaluate_model
 from utils import get_device, setup_logger
@@ -33,17 +33,15 @@ def main():
     logger = setup_logger()  
     model_id = "google-bert/bert-base-uncased"
     check_and_download_model(model_id, logger)
-    
     device = get_device()
     print(f"Using device: {device}")
-    save_process()
     train_loader, test_loader = get_dataloaders(batch_size=32)
     model = AutoModelForSequenceClassification.from_pretrained(model_id, num_labels=2)
 
     optimizer = AdamW(model.parameters(), lr=2e-5)
     criterion = nn.CrossEntropyLoss()
     logger.info("开始训练...")
-    train_model(model, train_loader, optimizer, criterion, device, epochs=30, logger=logger)
+    train_model(model, train_loader, optimizer, criterion, device, epochs=3, logger=logger)
     logger.info("开始评估...")
     evaluate_model(model, test_loader, device)
 

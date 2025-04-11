@@ -11,87 +11,47 @@ from transformers import BertTokenizer
 import pandas as pd
 from transformers import AutoTokenizer
 # 加载 BERT 预训练的 Tokenizer
+from datasets import load_dataset, load_from_disk
 
-def get_data(sample_size=1600):
-    base_dir = os.path.join('data', 'aclImdb_v1', 'aclImdb')
+def download_and_save_imdb():
+    if not os.path.exists("data/imdb"):  # 避免重复下载
+        print("Downloading IMDB dataset...")
+        dataset = load_dataset("imdb")
+        dataset.save_to_disk("data/imdb")
+    else:
+        print("IMDB dataset already exists.")
 
-    # 训练集和测试集的路径
-    train_pos_path = os.path.join(base_dir, 'train', 'pos')
-    train_neg_path = os.path.join(base_dir, 'train', 'neg')
-    test_pos_path = os.path.join(base_dir, 'test', 'pos')
-    test_neg_path = os.path.join(base_dir, 'test', 'neg')
-    
-    # 确保文件夹存在
-    if not os.path.exists(test_pos_path) or not os.path.exists(test_neg_path) or \
-       not os.path.exists(train_pos_path) or not os.path.exists(train_neg_path):
-        raise FileNotFoundError("One or more directories are missing!")
-
-    # 读取文件
-    pos_all, neg_all = [], []
-    
-    # 读取测试集
-    for filename in os.listdir(test_pos_path):
-        with open(os.path.join(test_pos_path, filename), encoding='utf8') as f:
-            pos_all.append(f.read())
-    
-    for filename in os.listdir(test_neg_path):
-        with open(os.path.join(test_neg_path, filename), encoding='utf8') as f:
-            neg_all.append(f.read())
-
-    # 读取训练集
-    for filename in os.listdir(train_pos_path):
-        with open(os.path.join(train_pos_path, filename), encoding='utf8') as f:
-            pos_all.append(f.read())
-    
-    for filename in os.listdir(train_neg_path):
-        with open(os.path.join(train_neg_path, filename), encoding='utf8') as f:
-            neg_all.append(f.read())
-
-    # 合并数据
-    datasets = np.array(pos_all + neg_all)
-    labels = np.array([1] * len(pos_all) + [0] * len(neg_all))
-    return datasets[:sample_size], labels[:sample_size]  # 截取指定数量
-
-
-def shuffle_process():
-    sentences, labels = get_data()
-    # Shuffle
-    shuffle_indexs = np.random.permutation(len(sentences))
-    datasets = sentences[shuffle_indexs]
-    labels = labels[shuffle_indexs]
-    return datasets, labels
-
-
-def save_process():
-    datasets, labels = shuffle_process()
-    sentences = []
-    
-    # 使用正则表达式清理文本
-    punc = '[’!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~\n。！，]'
-    for sen in datasets:
-        sen = sen.replace('\n', ' ')
-        sen = sen.replace('<br /><br />', ' ')
-        sen = re.sub(punc, '', sen)
-        sentences.append(sen)
-    
-    # Save
-    df = pd.DataFrame({'labels': labels, 'sentences': sentences})
-    df.to_csv("data/datasets.csv", index=False)
 
 
 class IMDBDataset(Dataset):
-    def __init__(self, csv_file):
-        self.data = pd.read_csv(csv_file)
-        self.sentences = self.data["sentences"].tolist()
-        self.labels = self.data["labels"].tolist()
+    def __init__(self, split="train", max_samples=None):
+        dataset = load_from_disk("data/imdb")[split]  # 读取训练或测试集
+        raw_texts = dataset["text"][:max_samples] if max_samples else dataset["text"]
+        self.labels = dataset["label"][:max_samples] if max_samples else dataset["label"]
+        self.texts = self.clean_texts(raw_texts)
+
+
         tokenizer = AutoTokenizer.from_pretrained("./model/google-bert/bert-base-uncased")
         self.encodings = tokenizer(
-            self.sentences,
+            self.texts,
             padding=True,
             truncation=True,
             max_length=512,
             return_tensors="pt"
         )
+        
+    def clean_texts(self, texts):
+        """清理文本数据"""
+        cleaned_texts = []
+        punc = r"[’!\"#$%&'()*+,-./:;<=>?@[\]^_`{|}~\n。！，]"  # 正则表达式匹配所有标点符号
+
+        for sen in texts:
+            sen = sen.replace("<br /><br />", " ")  # 去除 HTML 换行符
+            sen = re.sub(punc, "", sen)  # 删除所有标点符号
+            sen = sen.strip()  # 去除首尾空格
+            cleaned_texts.append(sen)
+
+        return cleaned_texts
 
     def __len__(self):
         return len(self.labels)
@@ -105,12 +65,10 @@ class IMDBDataset(Dataset):
     
 def get_dataloaders(batch_size=16):
     """创建训练和测试 DataLoader"""
-    dataset = IMDBDataset("data/datasets.csv")
+    download_and_save_imdb()  # 先下载数据集
 
-    # 划分训练集和测试集（80% 训练，20% 测试）
-    train_size = int(0.8 * len(dataset))
-    test_size = len(dataset) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+    train_dataset = IMDBDataset("train", max_samples=1600)
+    test_dataset = IMDBDataset("test", max_samples=1600)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -119,6 +77,6 @@ def get_dataloaders(batch_size=16):
 
 
 if __name__ == '__main__':
-    save_process()
+    
     train_loader, test_loader = get_dataloaders()
     print(f"训练集批次数: {len(train_loader)}, 测试集批次数: {len(test_loader)}")

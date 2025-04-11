@@ -1,0 +1,5 @@
+2025-04-11 23:03:56,619 - INFO - 模型路径已存在: ./model/google-bert/bert-base-uncased
+2025-04-11 23:03:59,316 - INFO - 开始训练...
+2025-04-11 23:04:28,120 - INFO - Epoch 1: Loss = 2.9359, Accuracy = 0.9950
+2025-04-11 23:04:56,425 - INFO - Epoch 2: Loss = 0.1287, Accuracy = 1.0000
+2025-04-11 23:05:24,726 - INFO - Epoch 3: Loss = 0.0708, Accuracy = 1.0000
